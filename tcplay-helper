@@ -4,6 +4,9 @@
 user=$3
 cryptdev=$2
 mountpt=/mnt/truecrypt
+userhome=`eval echo "~$SUDO_USER"`
+tchome="$userhome"/.truecrypt
+keyfile="$tchome"/"$cryptdev".key
 
 
 # Trap SIGINT
@@ -56,8 +59,12 @@ if [[ $1 == create ]]; then
       loopdev=$(losetup -f)
       fallocate -l "$3" "$cryptdev"
       losetup "$loopdev" "$cryptdev"
-      tcplay -c -d "$loopdev" -a whirlpool -b AES-256-XTS
-      tcplay -m "$cryptdev" -d "$loopdev"
+      sudo -u "$SUDO_USER" mkdir "$tchome"
+      chmod 0700 "$tchome"
+      sudo -u "$SUDO_USER" dd bs=512 count=8 if=/dev/urandom of="$keyfile" iflag=fullblock
+      chmod 0600 "$keyfile"
+      tcplay -c -d "$loopdev" -a whirlpool -b AES-256-XTS -k "$keyfile"
+      tcplay -m "$cryptdev" -d "$loopdev" -k "$keyfile"
       mkfs.ext4 /dev/mapper/"$cryptdev"
       sleep 2
       dmsetup remove "$cryptdev"
@@ -68,7 +75,7 @@ if [[ $1 == create ]]; then
 elif [[ $1 == open ]]; then
   loopdev=$(losetup -f)
   losetup "$loopdev" "$cryptdev"
-  tcplay -m "$cryptdev" -d "$loopdev"
+  tcplay -m "$cryptdev" -d "$loopdev" -k "$keyfile"
 
   # read passphrase
   read -r -s passphrase <<EOF
